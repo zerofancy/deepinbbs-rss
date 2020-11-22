@@ -1,0 +1,3 @@
+
+rootProject.name = "deepinbbs-rss"
+
