@@ -5,7 +5,7 @@ plugins {
     application
 }
 group = "top.ntutn.kfeed.deepinbbs"
-version = "1.0-SNAPSHOT"
+version = "2"
 
 repositories {
     mavenCentral()

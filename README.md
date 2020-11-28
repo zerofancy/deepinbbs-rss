@@ -18,3 +18,7 @@ deepin新版论坛没有rss订阅源，有大佬@dz_123写了个python程序来�
     - 精华：`http://localhost:8080/highlight`
     
 这里的`--port参数是绑定的端口号，默认8080`
+
+你也可以使用`--save`参数保存xml文件到本地。
+
+`java -jar deepinbbs-rss-fat.jar --save /Users/zero/.config/kfeed/deepin`

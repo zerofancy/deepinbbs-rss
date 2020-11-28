@@ -16,12 +16,14 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import java.io.File
 import java.net.InetSocketAddress
 import java.util.*
 import java.util.concurrent.TimeUnit
 
 
 class MyArgs(parser: ArgParser) {
+    val saveDirectory by parser.storing("-s", "--save", help = "保存到的文件目录").default("")
     val port by parser.storing("-p", "--port", help = "服务端口号").default("8080")
 }
 
@@ -32,7 +34,7 @@ fun HttpExchange.normalResponse(content: ByteArray, contentType: String = "text/
     close()
 }
 
-fun convertJsonToFeed(jsonString: String): String {
+fun convertJsonToFeed(jsonString: String, feedTitle: String? = ""): String {
     val jsonNode = ObjectMapper().readTree(jsonString)
     val articles = jsonNode.get("ThreadIndex").map { node ->
         SyndEntryImpl().apply {
@@ -50,18 +52,60 @@ fun convertJsonToFeed(jsonString: String): String {
 
     val feed = SyndFeedImpl().apply {
         feedType = "rss_2.0"
-        title = "deepin论坛"
-        description = "deepin的非官方rss"
+        title = feedTitle
+        description = "deepin的非官方rss-$feedTitle"
         link = "https://bbs.deepin.org/"
         entries = articles
     }
     return SyndFeedOutput().outputString(feed, true)
 }
 
+fun getFeedString(okHttpClient: OkHttpClient, url: String): String? {
+    val call = okHttpClient.newCall(
+        Request.Builder()
+            .url(url)
+            .get().build()
+    )
+    return call.execute().body?.string()
+}
+
+fun getAllFeedString(okHttpClient: OkHttpClient) =
+    getFeedString(okHttpClient, "https://bbs.deepin.org/api/v1/thread/index?order=updated_at&limit=20&where=&offset=0")
+
+fun getHotFeedString(okHttpClient: OkHttpClient) =
+    getFeedString(
+        okHttpClient,
+        "https://bbs.deepin.org/api/v1/thread/index?order=updated_at&limit=20&where=hot_value&offset=0"
+    )
+
+fun getHighLightFeedString(okHttpClient: OkHttpClient) =
+    getFeedString(
+        okHttpClient,
+        "https://bbs.deepin.org/api/v1/thread/index?order=updated_at&limit=20&where=is_digest&offset=0"
+    )
+
 fun main(args: Array<String>) {
     mainBody {
+        val okHttpClient = OkHttpClient.Builder().readTimeout(5, TimeUnit.SECONDS).build()
         ArgParser(args).parseInto(::MyArgs).run {
-            val okHttpClient = OkHttpClient.Builder().readTimeout(5, TimeUnit.SECONDS).build()
+            if (saveDirectory.trim() != "") {
+                File(saveDirectory, "all.xml").writeText(
+                    convertJsonToFeed(
+                        getAllFeedString(okHttpClient) ?: ""
+                    )
+                )
+                File(saveDirectory, "hot.xml").writeText(
+                    convertJsonToFeed(
+                        getHotFeedString(okHttpClient) ?: ""
+                    )
+                )
+                File(saveDirectory, "highlight.xml").writeText(
+                    convertJsonToFeed(
+                        getHighLightFeedString(okHttpClient) ?: ""
+                    )
+                )
+                return@mainBody
+            }
 
             println("服务运行在${port}端口。")
 
@@ -69,35 +113,19 @@ fun main(args: Array<String>) {
                 createContext("/") {
                     when (it.requestURI.path) {
                         "/all" -> {
-//                            it.queryToMap()?.let { println(it) }
-                            val call = okHttpClient.newCall(
-                                Request.Builder()
-                                    .url("https://bbs.deepin.org/api/v1/thread/index?order=updated_at&limit=20&where=&offset=0")
-                                    .get().build()
-                            )
-                            val responseString = call.execute().body?.string()
+                            val responseString = getAllFeedString(okHttpClient)
                             responseString?.let { resp ->
                                 it.normalResponse(convertJsonToFeed(resp).toByteArray(), "application/xml")
                             }
                         }
                         "/hot" -> {
-                            val call = okHttpClient.newCall(
-                                Request.Builder()
-                                    .url("https://bbs.deepin.org/api/v1/thread/index?order=updated_at&limit=20&where=hot_value&offset=0")
-                                    .get().build()
-                            )
-                            val responseString = call.execute().body?.string()
+                            val responseString = getHotFeedString(okHttpClient)
                             responseString?.let { resp ->
                                 it.normalResponse(convertJsonToFeed(resp).toByteArray(), "application/xml")
                             }
                         }
                         "/highlight" -> {
-                            val call = okHttpClient.newCall(
-                                Request.Builder()
-                                    .url("https://bbs.deepin.org/api/v1/thread/index?order=updated_at&limit=20&where=is_digest&offset=0")
-                                    .get().build()
-                            )
-                            val responseString = call.execute().body?.string()
+                            val responseString = getHighLightFeedString(okHttpClient)
                             responseString?.let { resp ->
                                 it.normalResponse(convertJsonToFeed(resp).toByteArray(), "application/xml")
                             }
